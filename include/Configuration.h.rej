@@ -1,0 +1,26 @@
+diff a/include/Configuration.h b/include/Configuration.h	(rejected hunks)
+@@ -35,6 +35,12 @@
+ #define DEV_MAX_MAPPING_NAME_STRLEN 63
+ #define LOCALE_STRLEN 2
+ 
++#define XM_INVERTER_MAX 2
++#define DEVICE_SN_LENGTH 20
++
++#define INVERTER_TYPE_DEYE 1
++#define INVERTER_TYPE_APS 2
++
+ struct CHANNEL_CONFIG_T {
+     uint16_t MaxChannelPower;
+     char Name[CHAN_MAX_NAME_STRLEN];
+@@ -185,7 +230,11 @@
+ 
+     INVERTER_CONFIG_T* getFreeInverterSlot();
+     INVERTER_CONFIG_T* getInverterConfig(const uint64_t serial);
++    XM_INVERTER_T* getXMInverterByDeviceSn(const char* deviceSn);
++    XM_INVERTER_T* getFreeXMInverterSlot();
+     void deleteInverterById(const uint8_t id);
++    void clearInverterSlotBySpaceDeviceSn(String deviceSns);
++    void deleteXMInverterByDeviceSn(const char* deviceSn);
+ 
+ private:
+     void loop();

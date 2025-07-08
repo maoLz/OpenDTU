@@ -29,7 +29,7 @@ def updateFileIfChanged(filename, content):
 
 def get_build_version():
     try:
-        build_version = porcelain.describe('.')  # '.' refers to the repository root dir
+        build_version = "Sunlit_1.0.1"  # '.' refers to the repository root dir
     except:
         build_version = "g0000000"
     print ("Firmware Revision: " + build_version)

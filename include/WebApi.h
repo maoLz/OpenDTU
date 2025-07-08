@@ -24,6 +24,10 @@
 #include "WebApi_webapp.h"
 #include "WebApi_ws_console.h"
 #include "WebApi_ws_live.h"
+#include "XmWebApi.h"
+#include "XmWebApiV2.h"
+#include "XmMqttClass.h"
+#include "XmUdp.h"
 #include <AsyncJson.h>
 #include <ESPAsyncWebServer.h>
 #include <TaskSchedulerDeclarations.h>
@@ -70,6 +74,8 @@ private:
     WebApiWebappClass _webApiWebapp;
     WebApiWsConsoleClass _webApiWsConsole;
     WebApiWsLiveClass _webApiWsLive;
+    XmWebApi _xmWebApi;
+    XmWebApiV2 _xmWebApiV2;
 };
 
 extern WebApiClass WebApi;

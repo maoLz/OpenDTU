@@ -4,6 +4,7 @@
  */
 #include "Configuration.h"
 #include "NetworkSettings.h"
+#include "MessageOutput.h"
 #include "Utils.h"
 #include "defaults.h"
 #include <ArduinoJson.h>
@@ -30,6 +31,16 @@ void ConfigurationClass::init(Scheduler& scheduler)
     memset(&config, 0x0, sizeof(config));
 }
 
+String ConfigurationClass::getDtuSn()
+{
+    char buffer[sizeof(uint64_t) * 8 + 1];
+    snprintf(buffer, sizeof(buffer), "%0" PRIx32 "%08" PRIx32,
+    ((uint32_t)((config.Dtu.Serial >> 32) & 0xFFFFFFFF)),
+    ((uint32_t)(config.Dtu.Serial & 0xFFFFFFFF)));
+    String dtuSnStr = String(buffer);
+    return dtuSnStr;
+}
+
 bool ConfigurationClass::write()
 {
     File f = LittleFS.open(CONFIG_FILENAME, "w");
@@ -39,10 +50,37 @@ bool ConfigurationClass::write()
     config.Cfg.SaveCount++;
 
     JsonDocument doc;
-
+    JsonObject xmAps = doc["xmAps"].to<JsonObject>();
+    xmAps["ip"] = IPAddress(config.Xm.Aps.Ip).toString();
+    xmAps["deviceSn"] = config.Xm.Aps.DeviceSn;
+    xmAps["hostName"] = config.Xm.Aps.HostName;
+    xmAps["open"] = config.Xm.Aps.open;
+    JsonObject xmShelly = doc["xmShelly"].to<JsonObject>();
+    xmShelly["deviceSn"] = config.Xm.Shelly.DeviceSn;
+    xmShelly["hostName"] = config.Xm.Shelly.HostName;
+    xmShelly["isPro"] = config.Xm.Shelly.IsPro;
+    xmShelly["open"] = config.Xm.Shelly.open;
+    JsonObject xm = doc["xm"].to<JsonObject>();
+    xm["smartStrategyV2"] = config.Xm.SmartStrategy;
+    xm["xmInterval"] = config.Xm.XmInterval;
+    xm["maxPower"] = config.Xm.maxPower;
     JsonObject cfg = doc["cfg"].to<JsonObject>();
     cfg["version"] = config.Cfg.Version;
     cfg["save_count"] = config.Cfg.SaveCount;
+
+    JsonArray xmInverters = doc["xmInverters"].to<JsonArray>();
+    xmInverters.clear();
+    for (uint8_t i = 0; i < XM_INVERTER_MAX; i++) {
+        JsonObject xmInverter = xmInverters.add<JsonObject>();
+        xmInverter["DeviceSn"] = config.Xm.Inverters[i].DeviceSn;
+        xmInverter["Ip"] = IPAddress(config.Xm.Inverters[i].Ip).toString();
+        xmInverter["MaxPower"] = config.Xm.Inverters[i].MaxPower;
+        xmInverter["RatedPower"] = config.Xm.Inverters[i].RatedPower;
+        xmInverter["Open"] = config.Xm.Inverters[i].Open;
+        xmInverter["Type"]= config.Xm.Inverters[i].Type;
+    }
+
+
 
     JsonObject wifi = doc["wifi"].to<JsonObject>();
     wifi["ssid"] = config.WiFi.Ssid;
@@ -199,10 +237,29 @@ bool ConfigurationClass::read()
         return false;
     }
 
+    JsonObject xmAps = doc["xmAps"];
+    IPAddress apsIp;
+    apsIp.fromString(xmAps["ip"] | "");
+    config.Xm.Aps.Ip[0] =apsIp[0];
+    config.Xm.Aps.Ip[1] =apsIp[1];
+    config.Xm.Aps.Ip[2] =apsIp[2];
+    config.Xm.Aps.open = xmAps["open"] | false;
+    config.Xm.Aps.Ip[3] =apsIp[3];
+    strlcpy(config.Xm.Aps.DeviceSn,xmAps["deviceSn"] |"",sizeof(config.Xm.Aps.DeviceSn));
+    strlcpy(config.Xm.Aps.HostName,xmAps["hostName"] |"",sizeof(config.Xm.Aps.HostName));
+
+    JsonObject xmShelly = doc["xmShelly"];
+    strlcpy(config.Xm.Shelly.DeviceSn,xmShelly["deviceSn"] |"",sizeof(config.Xm.Shelly.DeviceSn));
+    strlcpy(config.Xm.Shelly.HostName,xmShelly["hostName"] |"",sizeof(config.Xm.Shelly.HostName));
+    config.Xm.Shelly.IsPro = xmShelly["isPro"] | false;
+    config.Xm.Shelly.open = xmShelly["open"] | false;
+    JsonObject xm = doc["xm"];
+    config.Xm.SmartStrategy = xm["smartStrategyV2"] | false;
+    config.Xm.XmInterval = xm["xmInterval"] | 5U;
+    config.Xm.maxPower = xm["maxPower"] | 800;
     JsonObject cfg = doc["cfg"];
     config.Cfg.Version = cfg["version"] | CONFIG_VERSION;
     config.Cfg.SaveCount = cfg["save_count"] | 0;
-
     JsonObject wifi = doc["wifi"];
     strlcpy(config.WiFi.Ssid, wifi["ssid"] | WIFI_SSID, sizeof(config.WiFi.Ssid));
     strlcpy(config.WiFi.Password, wifi["password"] | WIFI_PASSWORD, sizeof(config.WiFi.Password));
@@ -338,7 +395,6 @@ bool ConfigurationClass::read()
         config.Inverter[i].ReachableThreshold = inv["reachable_threshold"] | REACHABLE_THRESHOLD;
         config.Inverter[i].ZeroRuntimeDataIfUnrechable = inv["zero_runtime"] | false;
         config.Inverter[i].ZeroYieldDayOnMidnight = inv["zero_day"] | false;
-        config.Inverter[i].ClearEventlogOnMidnight = inv["clear_eventlog"] | false;
         config.Inverter[i].YieldDayCorrection = inv["yieldday_correction"] | false;
 
         JsonArray channel = inv["channel"];
@@ -356,6 +412,22 @@ bool ConfigurationClass::read()
         JsonObject module = modules[i].as<JsonObject>();
         strlcpy(config.Logging.Modules[i].Name, module["name"] | "", sizeof(config.Logging.Modules[i].Name));
         config.Logging.Modules[i].Level = module["level"] | ESP_LOG_VERBOSE;
+    }
+
+    JsonArray xmInverters = doc["xmInverters"];
+    for(uint8_t i = 0; i < XM_INVERTER_MAX; i++) {
+        config.Xm.Inverters[i].Index = i;
+        strlcpy(config.Xm.Inverters[i].DeviceSn,xmInverters[i]["DeviceSn"] | "",sizeof(config.Xm.Inverters[i].DeviceSn));
+        IPAddress ip;
+        ip.fromString(xmInverters[i]["Ip"] | "");
+        config.Xm.Inverters[i].Ip[0] = ip[0];
+        config.Xm.Inverters[i].Ip[1] = ip[1];
+        config.Xm.Inverters[i].Ip[2] = ip[2];
+        config.Xm.Inverters[i].Ip[3] = ip[3];
+        config.Xm.Inverters[i].MaxPower = xmInverters[i]["MaxPower"] | 0;
+        config.Xm.Inverters[i].RatedPower = xmInverters[i]["RatedPower"] | 0;
+        config.Xm.Inverters[i].Type = xmInverters[i]["Type"] | 0;
+        config.Xm.Inverters[i].Open = xmInverters[i]["Open"] | false;
     }
 
     f.close();
@@ -563,5 +635,81 @@ ConfigurationClass::WriteGuard::~WriteGuard()
         sWriterCv.notify_all();
     }
 }
+
+XM_INVERTER_T* ConfigurationClass::getXMInverterByDeviceSn(const char* deviceSn) {
+    XM_INVERTER_T* inverters = config.Xm.Inverters;
+    for (int i = 0; i < XM_INVERTER_MAX; ++i) {
+        if (strcmp(inverters[i].DeviceSn, deviceSn) == 0 && inverters[i].Open) {
+            return &inverters[i];
+        }
+    }
+    return nullptr; // Not found
+}
+
+XM_INVERTER_T* ConfigurationClass::getFreeXMInverterSlot() {
+    XM_INVERTER_T* inverters = config.Xm.Inverters;
+    for (int i = 0; i < XM_INVERTER_MAX; ++i) {
+        MessageOutput.println(String("loop index:") + String(i) + String("if check:") + String(inverters[i].DeviceSn[0]  == '\0'));
+        int asciiCode = static_cast<int>(inverters[i].DeviceSn[0]);
+        MessageOutput.println(String("ascii code") +String(asciiCode));
+        if (inverters[i].DeviceSn[0] == '\0' || inverters[i].Open == false) {
+            strlcpy(inverters[i].DeviceSn, "", sizeof(inverters[i].DeviceSn));
+            inverters[i].Open = false;
+            inverters[i].Ip[0] = 0;
+            inverters[i].Ip[1] = 0;
+            inverters[i].Ip[2] = 0;
+            inverters[i].Ip[3] = 0;
+            inverters[i].MaxPower = 0;
+            inverters[i].RatedPower = 0;
+            inverters[i].Type = 0;
+            inverters[i].Index = i;
+            return &inverters[i];
+        }
+    }
+    MessageOutput.println("find No XM inverter Slot");
+    return nullptr; // No free slot
+}
+
+/**
+ * 根据空间中已存在的deviceSn清除DTU中无用
+ */
+void ConfigurationClass::clearInverterSlotBySpaceDeviceSn(String deviceSns){
+    if(deviceSns.length() == 0){
+        MessageOutput.println("未传空间中deviceSn,不做处理.");
+        return;
+    }
+    deviceSns = String(",") + deviceSns + String(",");
+    XM_INVERTER_T* inverters = config.Xm.Inverters;
+    for (int i = 0; i < XM_INVERTER_MAX; ++i) {
+        String deviceSn = String(inverters[i].DeviceSn);
+        String needSearched = String(",") + deviceSn + String(",");
+        MessageOutput.println(String("deviceSns:")+deviceSns);
+        MessageOutput.println(String("needSearched:")+deviceSns);
+        if (inverters[i].DeviceSn[0] == '\0' || inverters[i].Open == false) {
+            continue;
+        }
+
+        if(deviceSns.indexOf(needSearched) < 0){
+            deleteXMInverterByDeviceSn(deviceSn.c_str());
+        }
+    }
+
+}
+
+void ConfigurationClass::deleteXMInverterByDeviceSn(const char* deviceSn) {
+    XM_INVERTER_T* inverter = getXMInverterByDeviceSn(deviceSn);
+    if(inverter != nullptr){
+        strlcpy(inverter->DeviceSn, "", sizeof(inverter->DeviceSn));
+        inverter->Open = false;
+        inverter->Ip[0] = 0;
+        inverter->Ip[1] = 0;
+        inverter->Ip[2] = 0;
+        inverter->Ip[3] = 0;
+        inverter->MaxPower = 0;
+        inverter->RatedPower = 0;
+        inverter->Type = 0;
+    }
+}
+
 
 ConfigurationClass Configuration;

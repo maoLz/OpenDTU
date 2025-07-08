@@ -1,0 +1,18 @@
+diff a/src/WebApi.cpp b/src/WebApi.cpp	(rejected hunks)
+@@ -6,6 +6,8 @@
+ #include "Configuration.h"
+ #include "MessageOutput.h"
+ #include "defaults.h"
++#include "XmShelly.h"
++#include "XmSmartStrategy.h"
+ #include <AsyncJson.h>
+ 
+ WebApiClass::WebApiClass()
+@@ -27,6 +29,7 @@
+     _webApiLimit.init(_server, scheduler);
+     _webApiMaintenance.init(_server, scheduler);
+     _webApiMqtt.init(_server, scheduler);
++
+     _webApiNetwork.init(_server, scheduler);
+     _webApiNtp.init(_server, scheduler);
+     _webApiPower.init(_server, scheduler);

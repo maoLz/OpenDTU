@@ -18,14 +18,7 @@
                     <tr>
                         <th>{{ $t('firmwareinfo.FirmwareVersion') }}</th>
                         <td>
-                            <a
-                                :href="versionInfoUrl"
-                                target="_blank"
-                                v-tooltip
-                                :title="$t('firmwareinfo.FirmwareVersionHint')"
-                            >
-                                {{ systemStatus.git_hash }}
-                            </a>
+                            {{ systemStatus.git_hash }}
                         </td>
                     </tr>
                     <tr>

@@ -6,6 +6,7 @@
 #include "Configuration.h"
 #include "defaults.h"
 #include <AsyncJson.h>
+#include "XmSmartStrategy.h"
 
 #undef TAG
 static const char* TAG = "webapi";
@@ -39,6 +40,10 @@ void WebApiClass::init(Scheduler& scheduler)
     _webApiWebapp.init(_server, scheduler);
     _webApiWsConsole.init(_server, scheduler);
     _webApiWsLive.init(_server, scheduler);
+    _xmWebApi.init(_server);
+    SmartStrategy.init(scheduler);
+    //XmUdp.init(_server, scheduler);
+    _xmWebApiV2.init(_server);
 
     _server.begin();
 }

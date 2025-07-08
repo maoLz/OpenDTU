@@ -40,6 +40,12 @@
 #define LOG_MODULE_COUNT 16
 #define LOG_MODULE_NAME_STRLEN 32
 
+#define XM_INVERTER_MAX 2
+#define DEVICE_SN_LENGTH 20
+
+#define INVERTER_TYPE_DEYE 1
+#define INVERTER_TYPE_APS 2
+
 struct CHANNEL_CONFIG_T {
     uint16_t MaxChannelPower;
     char Name[CHAN_MAX_NAME_STRLEN];
@@ -62,7 +68,46 @@ struct INVERTER_CONFIG_T {
     CHANNEL_CONFIG_T channel[INV_MAX_CHAN_COUNT];
 };
 
+struct XM_INVERTER_T {
+    int Index;
+    //设备SN号
+    char DeviceSn[DEVICE_SN_LENGTH];
+    // IP地址
+    uint8_t Ip[4];
+    // 最大输出功率
+    int MaxPower;
+    // 铭牌功率
+    int RatedPower;
+    //smartStrategy open
+    bool Open;
+
+    int Type;
+};
+
 struct CONFIG_T {
+
+    struct {
+        bool SmartStrategy;
+        uint32_t XmInterval;
+        int maxPower;
+        int ratedPower;
+        struct {
+            uint8_t Ip[4];
+            char DeviceSn[20];
+            char HostName[50];
+            bool open;
+        } Aps;
+
+        struct {
+            char DeviceSn[20];
+            char HostName[50];
+            bool IsPro;
+            bool open;
+        } Shelly;
+
+        XM_INVERTER_T Inverters[XM_INVERTER_MAX];
+    } Xm;
+
     struct {
         uint32_t Version;
         uint32_t SaveCount;
@@ -189,7 +234,7 @@ public:
     bool write();
     void migrate();
     CONFIG_T const& get();
-
+    String getDtuSn();
     class WriteGuard {
     public:
         WriteGuard();
@@ -204,9 +249,13 @@ public:
 
     INVERTER_CONFIG_T* getFreeInverterSlot();
     INVERTER_CONFIG_T* getInverterConfig(const uint64_t serial);
+    XM_INVERTER_T* getXMInverterByDeviceSn(const char* deviceSn);
+    XM_INVERTER_T* getFreeXMInverterSlot();
     void deleteInverterById(const uint8_t id);
 
     int8_t getIndexForLogModule(const String& moduleName) const;
+    void clearInverterSlotBySpaceDeviceSn(String deviceSns);
+    void deleteXMInverterByDeviceSn(const char* deviceSn);
 
 private:
     void loop();

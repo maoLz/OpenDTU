@@ -69,7 +69,7 @@ private:
 
     Task _loopTask;
 
-    static constexpr byte DNS_PORT = 53;
+    static constexpr uint8_t DNS_PORT = 53;
 
     bool _adminEnabled = true;
     bool _performConnection = true;
