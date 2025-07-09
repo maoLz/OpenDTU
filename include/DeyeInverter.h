@@ -54,11 +54,13 @@ private:
     bool _isOpen = false;
     int _type = 1;
     int _index = 0;
+    unsigned long _lastUpdateTime = 0;
     /**
      * 只放入内存的信息
      */
     int readEmptyTimes = -1;
     int readActiveEmptyTimes = -1;
+    int readErrorTimes = -1;
     bool enterReadMode = true;
     int _outputPower = -1;
     int _activePower = -1;

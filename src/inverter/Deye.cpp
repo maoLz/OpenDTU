@@ -26,8 +26,6 @@ DeyeInverter::DeyeInverter(XM_INVERTER_T& inverter)
     _type = inverter.Type;
     _index = inverter.Index;
     udp.begin(10000 + inverter.Index);
-    setCommandUdp.begin(9000 + inverter.Index);
-    activePowerUdp.begin(8000 + inverter.Index);
 }
 
 // 初始化方法
@@ -62,7 +60,6 @@ void DeyeInverter::init(AsyncWebServerRequest* request, CONFIG_T& config, JsonVa
         _isOpen = true;
         _type = INVERTER_TYPE_DEYE;
         udp.begin(10000 + inverter->Index);
-        setCommandUdp.begin(9000 + inverter->Index);
         JsonDocument response;
         int attemptTimes = 0;
         while (attemptTimes < 3 && _deviceSn.length() == 0) {
@@ -70,7 +67,6 @@ void DeyeInverter::init(AsyncWebServerRequest* request, CONFIG_T& config, JsonVa
                 sendCommand("AT+Q\n", false);
             }
             sendCommand("", true);
-            delay(1000);
             String str = syncRead(300, 5);
             str.replace("\020", "");
             handleResult(str, DEVICESN);
@@ -83,7 +79,6 @@ void DeyeInverter::init(AsyncWebServerRequest* request, CONFIG_T& config, JsonVa
         attemptTimes = 0;
         while (attemptTimes < 5 && _ratedPower <= 0) {
             attemptTimes++;
-            delay(1000);
             sendCommand("AT+INVDATA=8,01030010000185CF\n", false);
             String str = syncRead(200, 3);
             str.replace("\020", "");
@@ -92,8 +87,8 @@ void DeyeInverter::init(AsyncWebServerRequest* request, CONFIG_T& config, JsonVa
         }
         attemptTimes = 0;
 
-        MessageOutput.println(String("ip地址:")+String(_ip)+String(",获取设备SN:")+_deviceSn);
-        MessageOutput.println(String("ip地址:")+String(_ip)+String("获取额定功率:")+_ratedPower);
+        MessageOutput.println(String("ip地址:") + String(_ip) + String(",获取设备SN:") + _deviceSn);
+        MessageOutput.println(String("ip地址:") + String(_ip) + String("获取额定功率:") + _ratedPower);
         if (_deviceSn.length() == 0 || _ratedPower <= 0) {
             throw CustomException("add deye inverter wrong.", INVERTER_DEYE_ADD_ERROR);
         }
@@ -140,8 +135,6 @@ void DeyeInverter::init(AsyncWebServerRequest* request, CONFIG_T& config, JsonVa
 void DeyeInverter::remove(AsyncWebServerRequest* request, CONFIG_T& config, JsonVariant& doc)
 {
     udp.stop();
-    setCommandUdp.stop();
-    activePowerUdp.stop();
 }
 
 // 根据配置加载
@@ -183,7 +176,7 @@ void DeyeInverter::setInvertPower(int power, bool isWebRequest)
         power = _maxPower;
     }
     int percent = power * 10000 / _ratedPower;
-    MessageOutput.print(String("deviceSn:")+_deviceSn+String(",设置百分比:"));
+    MessageOutput.print(String("deviceSn:") + _deviceSn + String(",设置百分比:"));
     MessageOutput.println(percent);
     if (power == _outputPower) {
         // if (!isWebRequest) {
@@ -199,10 +192,12 @@ void DeyeInverter::setInvertPower(int power, bool isWebRequest)
 
     int i = 0;
     while (i < 3) {
-        sendExecuteCommand(command + "\n", isWebRequest && i == 0);
+        sendCommand(command + "\n", isWebRequest && i == 0);
         esp_task_wdt_reset();
+        //读一次响应
+        syncRead(300,3);
         i++;
-        if(!isWebRequest){
+        if (!isWebRequest) {
             read53Power(3, power);
             int reduce = power - _outputPower;
             if (reduce < 5 && reduce > -5) {
@@ -211,12 +206,12 @@ void DeyeInverter::setInvertPower(int power, bool isWebRequest)
             }
         }
     }
-    if(!isWebRequest){
+    if (!isWebRequest) {
         int reduce = power - _outputPower;
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",目标功率:") + String(power));
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",53号寄存器值:") + String(_outputPower));
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",目标功率:") + String(power));
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",53号寄存器值:") + String(_outputPower));
         if (reduce > 5 || reduce < -5) {
-            MessageOutput.println(String("deviceSn:")+_deviceSn+String(",目标功率与53号寄存器值不同,本次指令设置失败。"));
+            MessageOutput.println(String("deviceSn:") + _deviceSn + String(",目标功率与53号寄存器值不同,本次指令设置失败。"));
             throw CustomException("本次指令设置失败");
         }
     }
@@ -231,7 +226,8 @@ int DeyeInverter::getRatedPower()
 int DeyeInverter::getInvertPower()
 {
     int i = 0;
-    udp.begin(10000+_index);
+    udp.begin(10000 + _index);
+    int lastActivePower = _activePower;
     _activePower = -1;
     while (i < 4) {
         sendCommand(String("AT+INVDATA=8,010300560002241B\n"), i == 0);
@@ -244,14 +240,19 @@ int DeyeInverter::getInvertPower()
 
             String number = result.substring(6, 10);
             int hexInt = CommonUtils::convertHexStrToInt(number);
-            MessageOutput.println(String("deviceSn:")+_deviceSn+String("逆变器当前输出功率读取为:") + String(hexInt));
+            MessageOutput.println(String("deviceSn:") + _deviceSn + String("逆变器当前输出功率读取为:") + String(hexInt));
             _activePower = hexInt / 10;
+            _lastUpdateTime = millis();
             break;
         }
         i++;
     }
     udp.stop();
     if (_activePower == -1) {
+        if (lastActivePower > 0 && (millis() - _lastUpdateTime < 5 * 60 * 1000)) {
+            _activePower = lastActivePower;
+            return _activePower;
+        }
         throw CustomException("未读取逆变器功率");
     }
     // 返回逆变器功率
@@ -273,11 +274,11 @@ int DeyeInverter::getCommandPower()
 // 获取输出功率
 float DeyeInverter::getOutputPower()
 {
-    int i =0;
+    int i = 0;
     while (_outputPower < 0 && i < 3) {
         read53Power(3, -1);
         i++;
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",首次读取输出功率值为") + _outputPower);
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",首次读取输出功率值为") + _outputPower);
     }
     return _outputPower;
 }
@@ -306,8 +307,8 @@ void DeyeInverter::openSmartStrategy(bool open)
             if (!Configuration.write()) {
                 throw CustomException("dtu config write wrong.", DTU_CONF_WRITE_ERROR);
             }
-        }else{
-                throw CustomException("deye get 40 power error.", UNEXPECT_ERROR);
+        } else {
+            throw CustomException("deye get 40 power error.", UNEXPECT_ERROR);
         }
         udp.stop();
     }
@@ -326,14 +327,15 @@ void DeyeInverter::read53Power(int times, int targetPower)
                 break;
             }
         } else {
+            //没有目标功率时，只要读取实际值，就设置
             if (tempOutputPower >= 0) {
                 _outputPower = tempOutputPower;
                 break;
             }
         }
-        sendActiveCommand(String("AT+INVDATA=8,0103003500019404\n"), targetPower == -1);
+        sendCommand(String("AT+INVDATA=8,0103003500019404\n"), targetPower == -1);
         esp_task_wdt_reset();
-        String result = syncReadActive(300, 3);
+        String result = syncRead(300, 3);
         result.replace(String("\020"), String(""));
         if (result.indexOf(String("+ok")) >= 0) {
             if (result.indexOf(String("0110")) == 4) {
@@ -358,8 +360,8 @@ void DeyeInverter::read53Power(int times, int targetPower)
                 // MessageOutput.println(String("hexInt:") + String(hexInt));
                 //  MessageOutput.println("hexInt/10000.00:" + String(hexInt / 10000.00));
                 tempOutputPower = hexInt / 10000.00 * _ratedPower;
-                MessageOutput.println(String("deviceSn:")+_deviceSn+String(",53寄存器功率:") + String(tempOutputPower));
-                MessageOutput.println(String("deviceSn:")+_deviceSn+String(",目标功率:") + String(targetPower));
+                MessageOutput.println(String("deviceSn:") + _deviceSn + String(",53寄存器功率:") + String(tempOutputPower));
+                MessageOutput.println(String("deviceSn:") + _deviceSn + String(",目标功率:") + String(targetPower));
 
                 // MessageOutput.println(String("targetPower == tempOutputPower") + String(targetPower == tempOutputPower));
                 _outputPower = tempOutputPower;
@@ -395,32 +397,29 @@ String DeyeInverter::getRemark()
 void DeyeInverter::sendExecuteCommand(String command, bool enterReadMode)
 {
     // 发送命令的代码
-    if (readEmptyTimes > 50) {
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",sendExecuteCommand【警告】异步读取空数据过多，需要重新进行查询模式,读取空数据次数为:") + String(readEmptyTimes));
+    if (readErrorTimes > 10) {
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",sendExecuteCommand【警告】异步读取空数据过多，需要重新进行查询模式,读取空数据次数为:") + String(readEmptyTimes));
         enterReadMode = true;
     }
     if (enterReadMode) {
-        delay(100);
-        setCommandUdp.beginPacket(_ip.c_str(), 48899);
+        udp.beginPacket(_ip.c_str(), 48899);
         String readCommand = "WIFIKIT-214028-READ";
         // MessageOutput.println("send command:" + readCommand);
-        setCommandUdp.write(CommonUtils::stringToUint8_tArray(readCommand), readCommand.length());
-        setCommandUdp.endPacket();
-        delay(100);
+        udp.write(CommonUtils::stringToUint8_tArray(readCommand), readCommand.length());
+        udp.endPacket();
         String okCommand = "+ok";
-        setCommandUdp.beginPacket(_ip.c_str(), 48899);
+        udp.beginPacket(_ip.c_str(), 48899);
         // MessageOutput.println("send command:" + okCommand);
-        setCommandUdp.write(CommonUtils::stringToUint8_tArray(okCommand), okCommand.length());
-        setCommandUdp.endPacket();
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",sendExecuteCommand进入查询模式指令已下发,指令内容为: WIFIKIT-214028-READ\n+ok"));
+        udp.write(CommonUtils::stringToUint8_tArray(okCommand), okCommand.length());
+        udp.endPacket();
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",sendExecuteCommand进入查询模式指令已下发,指令内容为: WIFIKIT-214028-READ\n+ok"));
     }
     // MessageOutput.println("command Length:" + String(command.length()));
     if (command.length() > 0) {
-        setCommandUdp.beginPacket(_ip.c_str(), 48899);
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",sendExecuteCommand下发功率设置指令,指令内容为:") + command);
-        setCommandUdp.write(CommonUtils::stringToUint8_tArray(command), command.length());
-        setCommandUdp.endPacket();
-        delay(100);
+        udp.beginPacket(_ip.c_str(), 48899);
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",sendExecuteCommand下发功率设置指令,指令内容为:") + command);
+        udp.write(CommonUtils::stringToUint8_tArray(command), command.length());
+        udp.endPacket();
     }
 }
 
@@ -428,32 +427,30 @@ void DeyeInverter::sendExecuteCommand(String command, bool enterReadMode)
 void DeyeInverter::sendCommand(String command, bool enterReadMode)
 {
     // 发送命令的代码
-    if (readEmptyTimes > 10) {
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",sendCommand【警告】异步读取空数据过多，需要重新进行查询模式,读取空数据次数为:") + String(readEmptyTimes));
+    if (readErrorTimes > 10) {
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",sendCommand【警告】异步读取空数据过多，需要重新进行查询模式,读取空数据次数为:") + String(readErrorTimes));
         enterReadMode = true;
+        readErrorTimes = 0;
     }
     if (enterReadMode) {
-        delay(100);
         udp.beginPacket(_ip.c_str(), 48899);
         String readCommand = "WIFIKIT-214028-READ";
         // MessageOutput.println("send command:" + readCommand);
         udp.write(CommonUtils::stringToUint8_tArray(readCommand), readCommand.length());
         udp.endPacket();
-        delay(100);
         String okCommand = "+ok";
         udp.beginPacket(_ip.c_str(), 48899);
         // MessageOutput.println("send command:" + okCommand);
         udp.write(CommonUtils::stringToUint8_tArray(okCommand), okCommand.length());
         udp.endPacket();
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",sendCommand进入查询模式指令已下发,指令内容为: WIFIKIT-214028-READ\n+ok"));
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",sendCommand进入查询模式指令已下发,指令内容为: WIFIKIT-214028-READ\n+ok"));
     }
     // MessageOutput.println("command Length:" + String(command.length()));
     if (command.length() > 0) {
         udp.beginPacket(_ip.c_str(), 48899);
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",sendCommand下发普通指令:") + command);
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",sendCommand下发普通指令:") + command);
         udp.write(CommonUtils::stringToUint8_tArray(command), command.length());
         udp.endPacket();
-        delay(100);
     }
 }
 
@@ -461,7 +458,7 @@ void DeyeInverter::sendCommand(String command, bool enterReadMode)
 void DeyeInverter::sendActiveCommand(String command, bool enterReadMode)
 {
     if (readActiveEmptyTimes > 10) {
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",【警告】异步读取空数据过多，需要重新进行查询模式,读取空数据次数为:") + String(readActiveEmptyTimes));
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",【警告】异步读取空数据过多，需要重新进行查询模式,读取空数据次数为:") + String(readActiveEmptyTimes));
         enterReadMode = true;
     }
     if (enterReadMode) {
@@ -477,12 +474,12 @@ void DeyeInverter::sendActiveCommand(String command, bool enterReadMode)
         // MessageOutput.println("send command:" + okCommand);
         activePowerUdp.write(CommonUtils::stringToUint8_tArray(okCommand), okCommand.length());
         activePowerUdp.endPacket();
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",进入查询模式指令已下发,指令内容为: WIFIKIT-214028-READ\n+ok"));
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",进入查询模式指令已下发,指令内容为: WIFIKIT-214028-READ\n+ok"));
     }
     // MessageOutput.println("command Length:" + String(command.length()));
     if (command.length() > 0) {
         activePowerUdp.beginPacket(_ip.c_str(), 48899);
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",下发(当前功率查询)普通指令:") + command);
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",下发(当前功率查询)普通指令:") + command);
         activePowerUdp.write(CommonUtils::stringToUint8_tArray(command), command.length());
         activePowerUdp.endPacket();
         delay(100);
@@ -500,7 +497,7 @@ String DeyeInverter::syncReadActive(int delayMillisecond, int cycleTimes)
             char buffer[1024];
             activePowerUdp.read(buffer, readLength);
             String ret = String((char*)buffer).substring(0, readLength);
-            MessageOutput.println(String("deviceSn:")+_deviceSn+String(",德业逆变器异步指令响应(当前功率查询):") + String(ret));
+            MessageOutput.println(String("deviceSn:") + _deviceSn + String(",德业逆变器异步指令响应(当前功率查询):") + String(ret));
             readActiveEmptyTimes = 0;
             return ret;
         } else {
@@ -512,22 +509,43 @@ String DeyeInverter::syncReadActive(int delayMillisecond, int cycleTimes)
 
 String DeyeInverter::syncRead(int delayMillisecond, int cycleTimes)
 {
-    for (int i = 0; i < cycleTimes; i++) {
-        delay(delayMillisecond);
-        esp_task_wdt_reset();
+    esp_task_wdt_reset();
+    unsigned long start = millis();
+    int i = 0;
+    while (millis() - start < 1000) { // 最多等待 300ms
+        i++;
         int readLength = udp.parsePacket();
         // MessageOutput.println("read data length:" + String(readLength));
         if (readLength > 0) {
-            char buffer[1024];
+            char* buffer = (char*)malloc(256);
             udp.read(buffer, readLength);
             String ret = String((char*)buffer).substring(0, readLength);
-            MessageOutput.println(String("deviceSn:")+_deviceSn+String(",德业逆变器异步指令响应:") + String(ret));
+            MessageOutput.println(String("deviceSn:") + _deviceSn + String(",德业逆变器异步指令响应:") + String(ret)+String("共读次数")+i);
             readEmptyTimes = 0;
+            free(buffer);
             return ret;
         } else {
             readEmptyTimes++;
         }
+        delay(5); // 防止 CPU 空转
     }
+    readErrorTimes++;
+    MessageOutput.println(String("deviceSn:") + _deviceSn + String(",德业逆变器异步指令响应读空一次，目前读空次数:")+String(readErrorTimes));
+    // for (int i = 0; i < cycleTimes; i++) {
+    //     delay(delayMillisecond);
+    //     int readLength = udp.parsePacket();
+    //     // MessageOutput.println("read data length:" + String(readLength));
+    //     if (readLength > 0) {
+    //         char buffer[1024];
+    //         udp.read(buffer, readLength);
+    //         String ret = String((char*)buffer).substring(0, readLength);
+    //         MessageOutput.println(String("deviceSn:") + _deviceSn + String(",德业逆变器异步指令响应:") + String(ret));
+    //         readEmptyTimes = 0;
+    //         return ret;
+    //     } else {
+    //         readEmptyTimes++;
+    //     }
+    // }
     return "";
 }
 
@@ -538,11 +556,11 @@ void DeyeInverter::handleResult(String result, int type)
         _deviceSn = result.substring(result.lastIndexOf(",") + 1);
     } else if (result.indexOf("+ok") >= 0 && result.indexOf("0103") == 4) {
         result = result.substring(4);
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",resultType:")+String(type));
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",resultType:") + String(type));
         String number = result.substring(6, 10);
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",number:") + number);
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",number:") + number);
         int hexInt = CommonUtils::convertHexStrToInt(number);
-        MessageOutput.println(String("deviceSn:")+_deviceSn+String(",hexInt:") + String(hexInt)); // MessageOutput.println("hexInt/10000.00:" + String(hexInt / 10000.00));
+        MessageOutput.println(String("deviceSn:") + _deviceSn + String(",hexInt:") + String(hexInt)); // MessageOutput.println("hexInt/10000.00:" + String(hexInt / 10000.00));
         if (type == MAXPOWER && hexInt <= 100 && hexInt >= 50) {
             _maxPower = hexInt * _ratedPower / 100;
         } else if (type == OUTPUTPOWER) {

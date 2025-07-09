@@ -35,26 +35,11 @@ void XmSmartStrategy::init(Scheduler& scheduler)
  */
 void XmSmartStrategy::deyeCommandWrite()
 {
-    for (int i = 0; i < XM_INVERTER_MAX; i++) {
-        if (inverters[i] != nullptr && inverters[i]->getDeviceSn() != "") {
-            if (inverters[i]->getType() == INVERTER_TYPE_DEYE) {
-                DeyeInverter* deyeInverter = (DeyeInverter*)inverters[i];
-                deyeInverter->sendCommand("AT+INVDATA=8,0103003500019404\n", false);
-            }
-        }
-    }
+
 }
 
 void XmSmartStrategy::deyeActivePowerRead()
 {
-    for (int i = 0; i < XM_INVERTER_MAX; i++) {
-        if (inverters[i] != nullptr && inverters[i]->getDeviceSn() != "") {
-            if (inverters[i]->getType() == INVERTER_TYPE_DEYE) {
-                DeyeInverter* deyeInverter = (DeyeInverter*)inverters[i];
-                deyeInverter->sendActiveCommand("AT+INVDATA=8,010300560001641A\n", false);
-            }
-        }
-    }
 }
 
 /**
@@ -70,6 +55,9 @@ void XmSmartStrategy::deyeCommandRead()
  */
 void XmSmartStrategy::smartStrategyTask()
 {
+    MessageOutput.print("[Memory] Free heap: ");
+    MessageOutput.print(ESP.getFreeHeap());
+    MessageOutput.println(" bytes");
     int invertersCount = getInverterCount();
     _smartStrategyTask.setInterval(interval * TASK_SECOND);
     if (!open || invertersCount == 0) {

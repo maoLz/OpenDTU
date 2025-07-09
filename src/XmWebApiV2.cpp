@@ -29,6 +29,7 @@ void XmWebApiV2::init(AsyncWebServer& server)
 
 void XmWebApiV2::onAddInverter(AsyncWebServerRequest* request)
 {
+    esp_task_wdt_init(30, true);
     AsyncJsonResponse* response = new AsyncJsonResponse();
     auto& root = response->getRoot();
     try {
@@ -313,7 +314,7 @@ void XmWebApiV2::smartStrategy(AsyncWebServerRequest* request)
         if (smartStrategy && Shelly.open == false) {
             throw CustomException("shelly is not open.", METER_NOT_OPEN);
         }
-        int setInterval = 5U;
+        int setInterval = 3U;
         if(!smartStrategy){
             SmartStrategy.setOpen(smartStrategy);
         }
@@ -330,7 +331,7 @@ void XmWebApiV2::smartStrategy(AsyncWebServerRequest* request)
                 }
                 if (inverters[i]->getType() == INVERTER_TYPE_DEYE) {
                     // 德业5s一次智能策略扫描
-                    setInterval = 5U;
+                    setInterval = 3U;
                 }
             }
         }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ESPAsyncWebServer.h>
+#include <vector>
 
 class CommonUtils {
 public:
@@ -13,4 +14,6 @@ public:
     static String addZeroPrefix(String ret, int width);
 
     static String calculateCRC16(String commandPrefix);
+
+    static std::vector<uint8_t> strToHex(String str);
 };
