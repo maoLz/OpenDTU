@@ -37,6 +37,7 @@ public:
     void openSmartStrategy(bool smartStrategy) override;
 
     void sendCommand(String command,bool enterReadMode);
+    void sendCommandV2(const char* command,bool enterReadMode);
     void sendExecuteCommand(String command,bool enterReadMode);
     void read53Power(int times,int targetPower);
     void sendActiveCommand(String command,bool enterReadMode);

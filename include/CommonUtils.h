@@ -16,4 +16,6 @@ public:
     static String calculateCRC16(String commandPrefix);
 
     static std::vector<uint8_t> strToHex(String str);
+
+    static void calculateCRC16V2(const char* commandHex, char* outBuffer, size_t outBufferSize);
 };

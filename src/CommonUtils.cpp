@@ -57,3 +57,30 @@ String CommonUtils::calculateCRC16(String commandPrefix) {
     }
     return commandPrefix +crcHex.substring(2,4) + crcHex.substring(0,2);
 }
+
+void CommonUtils::calculateCRC16V2(const char* commandHex, char* outBuffer, size_t outBufferSize) {
+    size_t len = strlen(commandHex);
+    size_t byteLen = len / 2;
+    if (byteLen > 64 || outBufferSize < len + 4 + 1) return; // 安全检查
+
+    uint8_t data[64];
+    for (size_t i = 0; i < byteLen; ++i) {
+        char byteStr[3] = { commandHex[i * 2], commandHex[i * 2 + 1], 0 };
+        data[i] = (uint8_t)strtoul(byteStr, nullptr, 16);
+    }
+
+    // CRC16计算（Modbus）
+    uint16_t crc = 0xFFFF;
+    for (size_t i = 0; i < byteLen; i++) {
+        crc ^= data[i];
+        for (size_t j = 0; j < 8; j++) {
+            if (crc & 1)
+                crc = (crc >> 1) ^ 0xA001;
+            else
+                crc >>= 1;
+        }
+    }
+
+    // 结果拼接（低字节在前，高字节在后）
+    snprintf(outBuffer, outBufferSize, "%s%02X%02X", commandHex, crc & 0xFF, (crc >> 8) & 0xFF);
+}

@@ -68,41 +68,32 @@ void XmShelly::initShellyHostName(CONFIG_T& config){
     }
 }
 
-int XmShelly::getTotalPower(){
-    String serverPath = hostName + String("/status");
-    if(isPro){
-        serverPath = hostName +  String("/rpc/EM.GetStatus?id=0");
+int XmShelly::getTotalPower() {
+    char serverPath[128];
+    if (isPro) {
+        snprintf(serverPath, sizeof(serverPath), "%s/rpc/EM.GetStatus?id=0", hostName.c_str());
+    } else {
+        snprintf(serverPath, sizeof(serverPath), "%s/status", hostName.c_str());
     }
-    //serverPath = "http://shellyem3-485519d9dcbf.local/status";
-    // MessageOutput.println(String("serverPath:") + serverPath);
     HTTPClient _httpClient;
-    _httpClient.begin(serverPath.c_str());
+    _httpClient.begin(serverPath);
     _httpClient.setTimeout(3000);
     int httpResponseCode = _httpClient.GET();
-    // MessageOutput.println(String("responseCode:") + String(httpResponseCode));
-    if(httpResponseCode > 0){
+    if (httpResponseCode > 0) {
         isOnline = true;
         String payload = _httpClient.getString();
         JsonDocument doc;
-        char buf[payload.length() + 1];
-        strcpy(buf,payload.c_str());
-        deserializeJson(doc, buf);
-        // MessageOutput.print(String("getTotalPower payload:") + payload);
-        if(!doc.containsKey("total_act_power") && !doc.containsKey("total_power")){
-            throw CustomException(payload,SHELLY_API_REQUEST_ERROR);
+        DeserializationError err = deserializeJson(doc, payload);
+        if (err || (!doc.containsKey("total_act_power") && !doc.containsKey("total_power"))) {
+            throw CustomException(payload, SHELLY_API_REQUEST_ERROR);
         }
-        int maxOutPower = 0;
-        if(isPro){
-            maxOutPower = doc["total_act_power"];
-        }else{
-            maxOutPower = doc["total_power"];
-        }
+        int maxOutPower = isPro ? doc["total_act_power"].as<int>() : doc["total_power"].as<int>();
         return maxOutPower;
-    }else{
+    } else {
         isOnline = false;
-        String errorMsg = String("requestUrl:")+ serverPath + String("response Code: ") + httpResponseCode;
-        throw CustomException(errorMsg,SHELLY_API_CODE_ERROR);
+        throw CustomException("requestError", SHELLY_API_CODE_ERROR);
     }
+    _httpClient.end();
 }
 
 XmShelly Shelly;

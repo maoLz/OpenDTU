@@ -55,104 +55,69 @@ void XmSmartStrategy::deyeCommandRead()
  */
 void XmSmartStrategy::smartStrategyTask()
 {
-    MessageOutput.print("[Memory] Free heap: ");
-    MessageOutput.print(ESP.getFreeHeap());
-    MessageOutput.println(" bytes");
-    int invertersCount = getInverterCount();
     _smartStrategyTask.setInterval(interval * TASK_SECOND);
+
+    int invertersCount = getInverterCount();
     if (!open || invertersCount == 0) {
         _smartStrategyTask.forceNextIteration();
         return;
     }
-    struct tm timeinfo;
-    getLocalTime(&timeinfo, 5);
-    String timeLog = String("[") + String(timeinfo.tm_year + 1900) + String("-")
-        + String(timeinfo.tm_mon + 1)
-        + String("-")
-        + String(timeinfo.tm_mday)
-        + String(" ")
-        + String(timeinfo.tm_hour)
-        + String(":")
-        + String(timeinfo.tm_min)
-        + String(":")
-        + String(timeinfo.tm_sec) + String("]");
-    String log = String("-------------------智能策略日志开始-----------------\n");
-    log = log + String("执行时间:") + timeLog + String("\n");
-
+    char log[256];
+    int startHeap = ESP.getFreeHeap();
+    snprintf(log,sizeof(log),"***smart strategy begin***\n[Memory] Free heap:%d bytes.\n",startHeap);
+    MessageOutput.println(log);
     int shellyTotalPower = 0;
     try {
         shellyTotalPower = Shelly.getTotalPower();
-        log = log + String("Shelly 上报总功率为:") + String(shellyTotalPower);
-
+        snprintf(log,sizeof(log),"shelly TotalPower:%d.\n",shellyTotalPower);
+        MessageOutput.println(log);
     } catch (CustomException& e) {
-        MessageOutput.println(e.msg());
+        snprintf(log,sizeof(log),"shelly getTotalPower wrong.\n");
+        MessageOutput.println(log);
         return;
     }
-
     int outPutPower = 0;
     for (int i = 0; i < XM_INVERTER_MAX; i++) {
         if (inverters[i] != nullptr && inverters[i]->isOpen()) {
+            String deviceSn = inverters[i]->getDeviceSn();
             try {
-                String deviceSn = inverters[i]->getDeviceSn();
-                log = log + String("\n逆变器sn:") + String(deviceSn) + String(";输出功率:");
                 int curOutputPower = inverters[i]->getOutputPower();
+                snprintf(log,size(log),"[%s] current output Power:%d.\n",deviceSn.c_str(),curOutputPower);
+                MessageOutput.println(log);
                 outPutPower += curOutputPower;
-                log = log + String(curOutputPower);
-            } catch (CustomException& e) {
-                MessageOutput.println(e.msg());
             } catch (...) {
-                MessageOutput.println("server fail");
+                snprintf(log,size(log),"[%s] current output Power get wrong.\n",deviceSn.c_str());
+                MessageOutput.println(log);
             }
         }
     }
 
     float needSetPower = shellyTotalPower + outPutPower;
-    log = log + String("\n总目标功率:") + String(needSetPower);
     if (needSetPower < 0) {
         needSetPower = 0;
     }
     if (needSetPower > maxPower) {
         needSetPower = maxPower;
     }
+    snprintf(log,size(log),"all inverter's outputPower: %d,totalTargetPower(shellyTotalPower+outPutPower):%f.\n",outPutPower,needSetPower);
     MessageOutput.println(log);
-
-    log = String("");
     for (int i = 0; i < XM_INVERTER_MAX; i++) {
         try {
-
             if (inverters[i] != nullptr && inverters[i]->isOpen()) {
-                String deviceSn = inverters[i]->getDeviceSn();
-                String tempLog = String("\n<<<<<<<<<<逆变器sn:") + String(deviceSn) + String("开始下发指令>>>>>>>>>>>\n");
                 int invertMaxPower = inverters[i]->getMaxPower();
                 float singlePower = needSetPower * invertMaxPower  / maxPower;
-                tempLog = tempLog + String("逆变器最大功率为:") + String(invertMaxPower) + String(",")+String("目标功率:")+String(singlePower);
-                MessageOutput.println(tempLog);
+                snprintf(log,size(log),"[%s] target power: %f\n",inverters[i]->getDeviceSn().c_str(),singlePower);
+                MessageOutput.print(log);
                 inverters[i]->setInvertPower((int)singlePower);
-                tempLog = String("\n<<<<<<<<<<逆变器sn:") + String(deviceSn) + String("下发指令结束>>>>>>>>>>>\n");
-                MessageOutput.println(tempLog);
             }
         } catch (CustomException& e) {
-            MessageOutput.println(e.msg());
         } catch (...) {
-            MessageOutput.println("server fail");
         }
     }
+    MessageOutput.print("***smart strategy end***\n");;
     _smartStrategyTask.setInterval(interval * TASK_SECOND);
 
-    getLocalTime(&timeinfo, 5);
-    timeLog = String("[") + String(timeinfo.tm_year + 1900) + String("-")
-        + String(timeinfo.tm_mon + 1)
-        + String("-")
-        + String(timeinfo.tm_mday)
-        + String(" ")
-        + String(timeinfo.tm_hour)
-        + String(":")
-        + String(timeinfo.tm_min)
-        + String(":")
-        + String(timeinfo.tm_sec) + String("]");
-    log = log + String("\n结束时间:") + timeLog;
-    log = log + String("\n-------------------智能策略日志结束-----------------");
-    MessageOutput.println(log);
+
 }
 
 /**
@@ -160,7 +125,7 @@ void XmSmartStrategy::smartStrategyTask()
  */
 void XmSmartStrategy::addInverter(IXmInverter* inverter)
 {
-    MessageOutput.println("addInverter Begin!!!");
+
     for (int i = 0; i < XM_INVERTER_MAX; i++) {
         if (inverters[i] == nullptr || inverters[i]->isOpen() == false) {
             inverters[i] = inverter;
@@ -205,7 +170,7 @@ void XmSmartStrategy::removeInverter(int index)
 
 void XmSmartStrategy::loadByConfig()
 {
-    MessageOutput.println("loadByConfig Begin!!!");
+
     auto& config = Configuration.get();
     open = config.Xm.SmartStrategy;
     interval = config.Xm.XmInterval;
@@ -227,7 +192,7 @@ void XmSmartStrategy::loadByConfig()
     }
     invertCount = invertNumber;
     this->maxPower = maxPowerNumber;
-    MessageOutput.println("loadByConfig End!!!");
+
 }
 
 void XmSmartStrategy::setOpen(bool open)
